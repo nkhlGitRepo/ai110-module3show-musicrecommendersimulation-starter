@@ -29,6 +29,8 @@ Some prompts to answer:
 
 You can include a simple diagram or bullet list if helpful.
 
+Real-world recommenders like Spotify use multiple signals including what similar users enjoy, song characteristics like tempo and mood, and engagement patterns like skips and saves. This system uses content-based filtering, matching song features directly to what users tell us they prefer. We prioritize genre and mood as the strongest signals because they're categorical deal-breakers, then layer in numerical features like energy using distance-based scoring where songs closer to a user's preference score higher. We also consider acousticness and danceability as secondary factors. This approach mirrors how real systems weight categorical preferences heavily while using continuous features like energy to provide fine-grained differentiation.
+
 ---
 
 ## Getting Started
