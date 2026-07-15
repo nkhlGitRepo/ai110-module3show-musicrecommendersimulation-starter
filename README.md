@@ -106,6 +106,79 @@ Paste a sample of your recommender's output here as a text block so a reader can
 #   3. ...
 ```
 
+User Profile: pop, happy, 0.80 energy, electronic preference
+
+```
+======================================================================
+TOP RECOMMENDATIONS FOR YOU
+======================================================================
+
+1. SUNRISE CITY
+   Artist: Neon Echo | Genre: pop
+   Score: 6.53 / 6.0
+
+   Why you'll like it:
+   • Genre match: pop (+2.0)
+   • Mood match: happy (+2.0)
+   • Energy: 0.82 vs target 0.80 (1.47)
+   • Acousticness: 0.82 (electronic)
+   • Danceability bonus: 0.79 (+0.24)
+
+   ------------------------------------------------------------------
+
+2. GYM HERO
+   Artist: Max Pulse | Genre: pop
+   Score: 4.52 / 6.0
+
+   Why you'll like it:
+   • Genre match: pop (+2.0)
+   • Mood mismatch: intense vs happy (0.0)
+   • Energy: 0.93 vs target 0.80 (1.30)
+   • Acousticness: 0.95 (electronic)
+   • Danceability bonus: 0.88 (+0.26)
+
+   ------------------------------------------------------------------
+
+3. ROOFTOP LIGHTS
+   Artist: Indigo Parade | Genre: indie pop
+   Score: 4.34 / 6.0
+
+   Why you'll like it:
+   • Genre mismatch: indie pop vs pop (0.0)
+   • Mood match: happy (+2.0)
+   • Energy: 0.76 vs target 0.80 (1.44)
+   • Acousticness: 0.65 (electronic)
+   • Danceability bonus: 0.82 (+0.25)
+
+   ------------------------------------------------------------------
+
+4. ELECTRIC DREAMS
+   Artist: Pulse Collective | Genre: electronic
+   Score: 2.59 / 6.0
+
+   Why you'll like it:
+   • Genre mismatch: electronic vs pop (0.0)
+   • Mood mismatch: uplifting vs happy (0.0)
+   • Energy: 0.87 vs target 0.80 (1.40)
+   • Acousticness: 0.92 (electronic)
+   • Danceability bonus: 0.91 (+0.27)
+
+   ------------------------------------------------------------------
+
+5. GLITCH GARDEN
+   Artist: Experimental Labs | Genre: experimental
+   Score: 2.51 / 6.0
+
+   Why you'll like it:
+   • Genre mismatch: experimental vs pop (0.0)
+   • Mood mismatch: intense vs happy (0.0)
+   • Energy: 0.79 vs target 0.80 (1.48)
+   • Acousticness: 0.81 (electronic)
+   • Danceability bonus: 0.73 (+0.22)
+
+   ------------------------------------------------------------------
+```
+
 **Screenshot or video** *(optional)*: <!-- Insert a screenshot or demo video link here -->
 
 ---

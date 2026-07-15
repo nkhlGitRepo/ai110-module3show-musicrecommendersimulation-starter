@@ -9,25 +9,39 @@ You will implement the functions in recommender.py:
 - recommend_songs
 """
 
-from recommender import load_songs, recommend_songs
+from .recommender import load_songs, recommend_songs
 
 
 def main() -> None:
-    songs = load_songs("data/songs.csv") 
+    songs = load_songs("data/songs.csv")
+    print(f"Successfully loaded {len(songs)} songs.\n")
 
-    # Starter example profile
-    user_prefs = {"genre": "pop", "mood": "happy", "energy": 0.8}
+    # Starter example profile (Gym Enthusiast)
+    user_prefs = {
+        "favorite_genre": "pop",
+        "favorite_mood": "happy",
+        "target_energy": 0.80,
+        "likes_acoustic": False
+    }
 
     recommendations = recommend_songs(user_prefs, songs, k=5)
 
-    print("\nTop recommendations:\n")
-    for rec in recommendations:
-        # You decide the structure of each returned item.
-        # A common pattern is: (song, score, explanation)
-        song, score, explanation = rec
-        print(f"{song['title']} - Score: {score:.2f}")
-        print(f"Because: {explanation}")
-        print()
+    print("\n" + "="*70)
+    print("TOP RECOMMENDATIONS FOR YOU")
+    print("="*70)
+
+    if recommendations:
+        for idx, rec in enumerate(recommendations, 1):
+            song, score, explanation = rec
+            print(f"\n{idx}. {song['title'].upper()}")
+            print(f"   Artist: {song['artist']} | Genre: {song['genre']}")
+            print(f"   Score: {score:.2f} / 6.0")
+            print(f"\n   Why you'll like it:")
+            for reason in explanation.split('\n'):
+                print(f"   • {reason}")
+            print(f"\n   {'-'*66}")
+    else:
+        print("No recommendations found.")
 
 
 if __name__ == "__main__":
