@@ -29,7 +29,32 @@ Some prompts to answer:
 
 You can include a simple diagram or bullet list if helpful.
 
-Real-world recommenders like Spotify use multiple signals including what similar users enjoy, song characteristics like tempo and mood, and engagement patterns like skips and saves. This system uses content-based filtering, matching song features directly to what users tell us they prefer. We prioritize genre and mood as the strongest signals because they're categorical deal-breakers, then layer in numerical features like energy using distance-based scoring where songs closer to a user's preference score higher. We also consider acousticness and danceability as secondary factors. This approach mirrors how real systems weight categorical preferences heavily while using continuous features like energy to provide fine-grained differentiation.
+
+Phase 1 Step 4, Summarize you comcept:
+Real-world recommenders like Spotify use multiple signals including what similar users enjoy, song characteristics like tempo and mood, and engagement patterns like skips and saves. The system I am designing uses content-based filtering that matches song features to what users tell us they prefer. Genre and mood are prioritized as the strongest signals because they are fundamentally all or nothing deal breakers for a recommendation. The system's formula will then prioritize numerical features like energy using distance-based scoring where songs closer to a user's preference score higher. Acousticness and danceability are also considered as secondary factors.
+
+Phase 2 Step 5, Document your plan:
+
+Algorithm Recipe (GMEWS - Genre-Mood-Energy Weighted Scorer):
+For each song, calculate: SCORE = G + M + (E × 1.5) + (A × 1.0) + (D × 0.3)
+- G: 2.0 if genre matches, else 0.0
+- M: 2.0 if mood matches, else 0.0  
+- E: 1.0 - |song.energy - target_energy| (distance-based)
+- A: acousticness if user likes acoustic, else 1.0 - acousticness
+- D: danceability × 0.3 if target_energy ≥ 0.7, else 0.0
+
+Rank songs by score (highest first), return top-K with explanations.
+
+Test Profiles:
+1. Chill Listener: lofi/chill/0.35/acoustic
+2. Gym Enthusiast: pop/intense/0.90/electronic
+3. Indie Romantic: indie/nostalgic/0.60/acoustic
+4. Electronic Producer: electronic/uplifting/0.87/electronic
+5. Classical Introvert: classical/meditative/0.15/acoustic
+6. Hip-Hop Head: hip-hop/energetic/0.85/electronic
+
+Expected Biases: Genre/mood mismatches create hard ceilings (4.0 score) that limit discovery across genres. Acoustic preference is heavily weighted and reduces recommendations for synthetic music. Energy distance penalizes extreme preferences. Danceability bonus only applies to high-energy users. No collaborative filtering means niche genres unrecommended unless the user explicitly prefers them.
+
 
 ---
 
