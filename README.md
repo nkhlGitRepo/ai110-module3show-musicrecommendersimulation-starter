@@ -349,6 +349,8 @@ Examples:
 
 You will go deeper on this in your model card.
 
+The catalog has only 20 songs, which makes recommendations limited and therefore unrealistic for getting truly accurate results.  Most genres are represented by just one or two songs, so users with niche preferences get stuck while mainstream users thrive.  Another issue with the algorithm is that it cannot understand lyrics to judge a song's appeal beyond its basic features.  Finally, the binary genre matching creates filter bubbles that prevent discovering songs outside a user's stated preferences.
+
 ---
 
 ## Reflection
@@ -362,5 +364,8 @@ Write 1 to 2 paragraphs here about what you learned:
 - about how recommenders turn data into predictions
 - about where bias or unfairness could show up in systems like this
 
+While working on this project, I learned that recommenders work by converting song features into a numerical score that ranks items for each user.  This is achieved through weighted math, where each feature becomes a number that gets combined with others based on weights chosen.  The algorithm just applies the patterns we define and ranks items accordingly.  This means a recommender is only as good as the data we are able to acquire and the algorithm that purposes that data to deliver accurate results.
+
+I also learned how easily bias creeps in through design choices that seem inconsequential on the surface.  Binary genre matching appears to be fair until you realize it creates unfairness by hacing mainstream users get multiple recommendations while fans of more niche content can get stuck with only one.  When setting the weights, it is important to choose whether energy matters more than genre and if danceability deserves a bonus.  
 
 
