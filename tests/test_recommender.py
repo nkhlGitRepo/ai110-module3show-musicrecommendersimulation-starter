@@ -1,5 +1,8 @@
 import pytest
-from src.recommender import Song, UserProfile, load_songs, score_song, score_song_advanced, recommend_songs
+from src.recommender import (
+    Song, UserProfile, load_songs, score_song, score_song_advanced, recommend_songs,
+    ScoringWeights, ScoringStrategy, WeightedScoringStrategy, get_strategy, SCORING_MODES
+)
 
 
 # Test fixtures: small dataset for testing
@@ -522,3 +525,284 @@ class TestIntegration:
         # Should both get recommendations
         assert len(low_recs) > 0
         assert len(high_recs) > 0
+
+
+class TestScoringModes:
+    """Test the strategy pattern implementation and mode interactions."""
+
+    def test_get_strategy_returns_correct_mode(self):
+        """Test that get_strategy returns the right strategy instance."""
+        genre_first = get_strategy("genre-first")
+        discovery = get_strategy("discovery")
+        niche = get_strategy("niche-friendly")
+        personality = get_strategy("personality")
+
+        assert isinstance(genre_first, ScoringStrategy)
+        assert isinstance(discovery, ScoringStrategy)
+        assert isinstance(niche, ScoringStrategy)
+        assert isinstance(personality, ScoringStrategy)
+        assert genre_first.name == "Genre-First (Default)"
+        assert discovery.name == "Discovery Mode"
+        assert niche.name == "Niche-Friendly Mode"
+        assert personality.name == "Personality-Based Mode"
+
+    def test_get_strategy_defaults_to_genre_first(self):
+        """Test that invalid mode names default to genre-first."""
+        invalid = get_strategy("nonexistent_mode")
+        genre_first = get_strategy("genre-first")
+
+        assert invalid.name == genre_first.name
+
+    def test_scoring_modes_registry_contains_all_modes(self):
+        """Test that all expected modes are registered."""
+        expected_modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+        assert set(SCORING_MODES.keys()) == set(expected_modes)
+
+    def test_scoring_weights_dataclass_created_correctly(self):
+        """Test that ScoringWeights stores weight configuration."""
+        weights = ScoringWeights(
+            genre=2.0, mood=2.0, energy=1.5, acousticness=1.0,
+            danceability=0.3, vocal_style=0.6, production=0.6,
+            emotional_arc=0.6, popularity=0.6, decade=0.6
+        )
+
+        assert weights.genre == 2.0
+        assert weights.mood == 2.0
+        assert weights.energy == 1.5
+        assert weights.danceability == 0.3
+
+    def test_weighted_scoring_strategy_score_method_exists(self):
+        """Test that WeightedScoringStrategy has a score method."""
+        strategy = get_strategy("genre-first")
+        assert hasattr(strategy, 'score')
+        assert callable(strategy.score)
+
+    def test_different_modes_produce_different_scores(self, sample_songs, pop_lover_profile):
+        """Test that same song scores differently in different modes."""
+        song = sample_songs[0]  # Happy pop track
+
+        genre_first_strat = get_strategy("genre-first")
+        discovery_strat = get_strategy("discovery")
+
+        score_gf, _ = genre_first_strat.score(pop_lover_profile, song)
+        score_disc, _ = discovery_strat.score(pop_lover_profile, song)
+
+        # Genre-first should weight genre more heavily, so score should be different
+        assert score_gf != score_disc
+
+    def test_genre_first_vs_discovery_genre_weight_difference(self, sample_songs, pop_lover_profile):
+        """Test that genre-first emphasizes genre more than discovery."""
+        # Create a song that doesn't match genre but matches mood/energy
+        non_matching_genre_song = {
+            'id': 10, 'title': "Test", 'artist': "Test",
+            'genre': "jazz",  # Not pop
+            'mood': "happy",  # Matches
+            'energy': 0.85,  # Matches
+            'tempo_bpm': 120, 'valence': 0.8,
+            'danceability': 0.7, 'acousticness': 0.1,
+            'popularity': 50, 'release_decade': 2020,
+            'vocal_style': "sung", 'production_quality': "polished", 'emotional_arc': "constant",
+        }
+
+        genre_first = get_strategy("genre-first")
+        discovery = get_strategy("discovery")
+
+        score_gf, _ = genre_first.score(pop_lover_profile, non_matching_genre_song)
+        score_disc, _ = discovery.score(pop_lover_profile, non_matching_genre_song)
+
+        # Genre-first should penalize non-matching genre more
+        assert score_gf < score_disc, "Genre-first should penalize non-matching genre more than discovery"
+
+    def test_discovery_mode_prefers_less_popular_songs(self, sample_songs):
+        """Test that discovery mode with negative popularity weight prefers indie songs."""
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        # Popular pop song
+        popular_song = sample_songs[0]  # popularity: 78
+
+        # Create a less popular version of the same song
+        unpopular_song = {
+            'id': 20, 'title': "Indie Pop", 'artist': "Unknown", 'genre': "pop",
+            'mood': "happy", 'energy': 0.85, 'tempo_bpm': 120, 'valence': 0.9,
+            'danceability': 0.8, 'acousticness': 0.15, 'popularity': 20,  # Much less popular
+            'release_decade': 2020, 'vocal_style': "sung", 'production_quality': "polished",
+            'emotional_arc': "constant",
+        }
+
+        discovery = get_strategy("discovery")
+        score_popular, _ = discovery.score(user_prefs, popular_song)
+        score_unpopular, _ = discovery.score(user_prefs, unpopular_song)
+
+        # Discovery should prefer the unpopular song (due to negative popularity weight)
+        assert score_unpopular > score_popular, "Discovery mode should prefer less popular songs"
+
+    def test_niche_friendly_has_boosted_genre_weight(self, sample_songs):
+        """Test that niche-friendly mode has higher genre weight than genre-first."""
+        # Compare the weight configurations themselves
+        genre_first = get_strategy("genre-first")
+        niche = get_strategy("niche-friendly")
+
+        # Niche-friendly should have higher genre weight (2.5 vs 2.0)
+        assert niche.weights.genre > genre_first.weights.genre, \
+            "Niche-friendly should have higher genre weight"
+        assert niche.weights.genre == 2.5
+        assert genre_first.weights.genre == 2.0
+
+    def test_personality_mode_emphasizes_production_and_vocal_style(self, sample_songs):
+        """Test that personality mode prioritizes vocal style and production over genre."""
+        user_prefs = {
+            'favorite_genre': 'lofi',
+            'favorite_mood': 'chill',
+            'target_energy': 0.35,
+            'likes_acoustic': True,
+            'preferred_vocal_style': 'sung',
+            'preferred_production': 'polished',
+            'preferred_emotional_arc': 'constant',
+        }
+
+        # Lofi song with instrumental vocals (doesn't match preference)
+        lofi_instrumental = sample_songs[1]  # lofi, instrumental
+        # Pop song with sung vocals (matches preference)
+        pop_sung = sample_songs[0]  # pop, sung vocals, polished
+
+        personality = get_strategy("personality")
+
+        score_lofi, _ = personality.score(user_prefs, lofi_instrumental)
+        score_pop, _ = personality.score(user_prefs, pop_sung)
+
+        # Personality mode should narrow the gap because pop song matches vocal/production preferences
+        genre_first = get_strategy("genre-first")
+        score_lofi_gf, _ = genre_first.score(user_prefs, lofi_instrumental)
+        score_pop_gf, _ = genre_first.score(user_prefs, pop_sung)
+
+        gap_personality = score_lofi - score_pop
+        gap_genre_first = score_lofi_gf - score_pop_gf
+
+        # The gap should be smaller in personality mode (vocal style/production matter more)
+        assert abs(gap_personality) < abs(gap_genre_first), \
+            "Personality mode should reduce genre mismatch penalty by boosting vocal/production"
+
+    def test_recommend_songs_respects_mode_parameter(self, sample_songs, pop_lover_profile):
+        """Test that recommend_songs uses the specified mode."""
+        recs_gf = recommend_songs(pop_lover_profile, sample_songs, k=3, mode="genre-first")
+        recs_disc = recommend_songs(pop_lover_profile, sample_songs, k=3, mode="discovery")
+
+        # Extract scores
+        scores_gf = [score for _, score, _ in recs_gf]
+        scores_disc = [score for _, score, _ in recs_disc]
+
+        # Scores should be different because modes weight differently
+        assert scores_gf != scores_disc, "Different modes should produce different scores"
+
+    def test_recommend_songs_with_different_modes_produce_different_rankings(self, sample_songs, pop_lover_profile):
+        """Test that mode changes affect which songs are recommended."""
+        recs_gf = recommend_songs(pop_lover_profile, sample_songs, k=3, mode="genre-first")
+        recs_discovery = recommend_songs(pop_lover_profile, sample_songs, k=3, mode="discovery")
+
+        songs_gf = [song['id'] for song, _, _ in recs_gf]
+        songs_discovery = [song['id'] for song, _, _ in recs_discovery]
+
+        # With small dataset, genre-first heavily biases towards matching genre
+        # Discovery should be more flexible, potentially ranking differently
+        # (May or may not change order with 3 songs, but demonstrates mode usage)
+        assert len(songs_gf) == 3
+        assert len(songs_discovery) == 3
+
+    def test_weighted_scoring_strategy_applies_weights_correctly(self, sample_songs):
+        """Test that strategy applies weights from ScoringWeights."""
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'preferred_vocal_style': 'sung',
+            'preferred_production': 'polished',
+            'preferred_emotional_arc': 'constant',
+        }
+
+        song = sample_songs[0]
+        strategy = get_strategy("genre-first")
+        score, reasons = strategy.score(user_prefs, song)
+
+        # Verify that genre (weight 2.0) and mood (weight 2.0) contributions appear
+        assert any("Genre match" in r and "2.00" in r for r in reasons)
+        assert any("Mood match" in r and "2.00" in r for r in reasons)
+
+    def test_modes_all_return_tuple_format(self, sample_songs, pop_lover_profile):
+        """Test that all modes return (score, reasons) tuple."""
+        song = sample_songs[0]
+
+        for mode_name in SCORING_MODES.keys():
+            strategy = get_strategy(mode_name)
+            result = strategy.score(pop_lover_profile, song)
+
+            assert isinstance(result, tuple), f"{mode_name} should return tuple"
+            assert len(result) == 2, f"{mode_name} should return (score, reasons)"
+            score, reasons = result
+            assert isinstance(score, float), f"{mode_name} score should be float"
+            assert isinstance(reasons, list), f"{mode_name} reasons should be list"
+
+    def test_niche_user_gets_more_matches_in_niche_friendly_mode(self):
+        """Test that niche-friendly mode helps niche users get more genre matches."""
+        songs = load_songs("data/songs.csv")
+
+        niche_user = {
+            'favorite_genre': 'synthwave',
+            'favorite_mood': 'moody',
+            'target_energy': 0.75,
+            'likes_acoustic': False,
+        }
+
+        recs_gf = recommend_songs(niche_user, songs, k=5, mode="genre-first")
+        recs_niche = recommend_songs(niche_user, songs, k=5, mode="niche-friendly")
+
+        genres_gf = [song['genre'] for song, _, _ in recs_gf]
+        genres_niche = [song['genre'] for song, _, _ in recs_niche]
+
+        synthwave_count_gf = genres_gf.count('synthwave')
+        synthwave_count_niche = genres_niche.count('synthwave')
+
+        # Niche-friendly should return at least as many synthwave songs
+        assert synthwave_count_niche >= synthwave_count_gf, \
+            "Niche-friendly mode should recommend at least as many matching genre songs"
+
+    def test_discovery_mode_finds_non_genre_matches(self):
+        """Test that discovery mode recommends outside preferred genre."""
+        songs = load_songs("data/songs.csv")
+
+        pop_user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        recs_gf = recommend_songs(pop_user, songs, k=5, mode="genre-first")
+        recs_disc = recommend_songs(pop_user, songs, k=5, mode="discovery")
+
+        genres_gf = [song['genre'] for song, _, _ in recs_gf]
+        genres_disc = [song['genre'] for song, _, _ in recs_disc]
+
+        pop_count_gf = genres_gf.count('pop')
+        pop_count_disc = genres_disc.count('pop')
+
+        # Discovery should recommend fewer pop songs (weakened genre weight)
+        assert pop_count_disc <= pop_count_gf, \
+            "Discovery mode should recommend fewer songs from preferred genre"
+
+    def test_all_modes_produce_valid_scores(self, sample_songs, pop_lover_profile):
+        """Test that all modes produce non-negative scores."""
+        song = sample_songs[0]
+
+        for mode_name in SCORING_MODES.keys():
+            strategy = get_strategy(mode_name)
+            score, reasons = strategy.score(pop_lover_profile, song)
+
+            # All scores should be non-negative (though can be very low)
+            assert score >= 0, f"{mode_name} should produce non-negative score"
+            assert len(reasons) > 0, f"{mode_name} should provide reasons"

@@ -9,7 +9,8 @@ You will implement the functions in recommender.py:
 - recommend_songs
 """
 
-from .recommender import load_songs, recommend_songs
+from .recommender import load_songs, recommend_songs, SCORING_MODES
+import argparse
 
 
 # User preference profiles for testing
@@ -78,7 +79,7 @@ ADVERSARIAL_PROFILES = {
 USER_PROFILES.update(ADVERSARIAL_PROFILES)
 
 
-def main(profile_name: str = "high_energy_pop") -> None:
+def main(profile_name: str = "high_energy_pop", mode: str = "genre-first") -> None:
     songs = load_songs("data/songs.csv")
     print(f"Successfully loaded {len(songs)} songs.\n")
 
@@ -89,13 +90,21 @@ def main(profile_name: str = "high_energy_pop") -> None:
             print(f"  - {name}")
         return
 
+    # Validate mode
+    if mode not in SCORING_MODES:
+        print(f"Mode '{mode}' not found. Available modes:")
+        for name, strategy in SCORING_MODES.items():
+            print(f"  - {name}: {strategy.name}")
+        return
+
     user_prefs = USER_PROFILES[profile_name]
-    recommendations = recommend_songs(user_prefs, songs, k=5)
+    recommendations = recommend_songs(user_prefs, songs, k=5, mode=mode)
 
     print("\n" + "="*70)
     print(f"TOP RECOMMENDATIONS FOR: {profile_name.upper().replace('_', ' ')}")
     print(f"Profile: genre={user_prefs['favorite_genre']}, mood={user_prefs['favorite_mood']}, " +
           f"energy={user_prefs['target_energy']}, acoustic={'yes' if user_prefs['likes_acoustic'] else 'no'}")
+    print(f"Mode: {SCORING_MODES[mode].name}")
     print("="*70)
 
     if recommendations:
@@ -113,4 +122,10 @@ def main(profile_name: str = "high_energy_pop") -> None:
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Music Recommender Simulation")
+    parser.add_argument("--profile", type=str, default="high_energy_pop",
+                        help="User profile name (default: high_energy_pop)")
+    parser.add_argument("--mode", type=str, default="genre-first",
+                        help="Scoring mode: genre-first, discovery, niche-friendly, personality (default: genre-first)")
+    args = parser.parse_args()
+    main(profile_name=args.profile, mode=args.mode)

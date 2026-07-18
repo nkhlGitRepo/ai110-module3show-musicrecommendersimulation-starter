@@ -1,5 +1,6 @@
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
+from abc import ABC, abstractmethod
 import csv
 
 @dataclass
@@ -39,6 +40,132 @@ class UserProfile:
     preferred_emotional_arc: str = "constant"
     prefer_popular: bool = True
     target_release_decade: int = 2020
+
+@dataclass
+class ScoringWeights:
+    """Weight configuration for a scoring mode."""
+    genre: float
+    mood: float
+    energy: float
+    acousticness: float
+    danceability: float
+    vocal_style: float
+    production: float
+    emotional_arc: float
+    popularity: float
+    decade: float
+
+class ScoringStrategy(ABC):
+    """Base class for all scoring strategies."""
+
+    def __init__(self, name: str, weights: ScoringWeights):
+        self.name = name
+        self.weights = weights
+
+    @abstractmethod
+    def score(self, user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
+        """Score a song and return (score, reasons)."""
+        pass
+
+class WeightedScoringStrategy(ScoringStrategy):
+    """Generic strategy that applies weights uniformly to all scoring components."""
+
+    def score(self, user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
+        """Score using weighted components with gradual features."""
+        reasons = []
+        score = 0.0
+
+        # Genre: binary match
+        if song['genre'] == user_prefs['favorite_genre']:
+            genre_score = 1.0
+            reasons.append(f"Genre match: {song['genre']} (+{self.weights.genre:.2f})")
+        else:
+            genre_score = 0.0
+            reasons.append(f"Genre mismatch: {song['genre']} vs {user_prefs['favorite_genre']} (0.0)")
+        score += genre_score * self.weights.genre
+
+        # Mood: binary match
+        if song['mood'] == user_prefs['favorite_mood']:
+            mood_score = 1.0
+            reasons.append(f"Mood match: {song['mood']} (+{self.weights.mood:.2f})")
+        else:
+            mood_score = 0.0
+            reasons.append(f"Mood mismatch: {song['mood']} vs {user_prefs['favorite_mood']} (0.0)")
+        score += mood_score * self.weights.mood
+
+        # Energy: distance-based (0-1 range)
+        energy_distance = abs(song['energy'] - user_prefs['target_energy'])
+        energy_score = 1.0 - energy_distance
+        energy_contribution = energy_score * self.weights.energy
+        reasons.append(f"Energy: {song['energy']:.2f} vs target {user_prefs['target_energy']:.2f} ({energy_contribution:.2f})")
+        score += energy_contribution
+
+        # Acousticness: preference-based (0-1 range)
+        if user_prefs['likes_acoustic']:
+            acousticness_score = song['acousticness']
+            reason_text = "acoustic" if song['acousticness'] > 0.5 else "electronic"
+        else:
+            acousticness_score = 1.0 - song['acousticness']
+            reason_text = "electronic" if song['acousticness'] < 0.5 else "acoustic"
+        acousticness_contribution = acousticness_score * self.weights.acousticness
+        reasons.append(f"Acousticness: {acousticness_contribution:.2f} ({reason_text})")
+        score += acousticness_contribution
+
+        # Danceability: bonus only for high energy users (0-1 range)
+        if user_prefs['target_energy'] >= 0.7:
+            danceability_score = song['danceability']
+            danceability_contribution = danceability_score * self.weights.danceability
+            reasons.append(f"Danceability bonus: {danceability_contribution:.2f}")
+            score += danceability_contribution
+        else:
+            reasons.append("Danceability: N/A (low energy user)")
+
+        # Vocal style similarity (0-1 range via similarity function)
+        vocal_style = user_prefs.get('preferred_vocal_style', 'sung')
+        vocal_score = vocal_style_similarity(song['vocal_style'], vocal_style)
+        vocal_contribution = vocal_score * self.weights.vocal_style
+        reasons.append(f"Vocal style: {vocal_contribution:.2f}")
+        score += vocal_contribution
+
+        # Production quality similarity (0-1 range via similarity function)
+        prod_quality = user_prefs.get('preferred_production', 'polished')
+        prod_score = production_quality_similarity(song['production_quality'], prod_quality)
+        prod_contribution = prod_score * self.weights.production
+        reasons.append(f"Production: {prod_contribution:.2f}")
+        score += prod_contribution
+
+        # Emotional arc similarity (0-1 range via similarity function)
+        arc_pref = user_prefs.get('preferred_emotional_arc', 'constant')
+        arc_score = emotional_arc_similarity(song['emotional_arc'], arc_pref)
+        arc_contribution = arc_score * self.weights.emotional_arc
+        reasons.append(f"Emotional arc: {arc_contribution:.2f}")
+        score += arc_contribution
+
+        # Popularity scoring (0-1 range, inverted if negative weight)
+        prefer_pop = user_prefs.get('prefer_popular', True)
+        if self.weights.popularity >= 0:
+            if prefer_pop:
+                pop_score = song['popularity'] / 100.0
+            else:
+                pop_score = 1.0 - (song['popularity'] / 100.0)
+        else:
+            if prefer_pop:
+                pop_score = 1.0 - (song['popularity'] / 100.0)
+            else:
+                pop_score = song['popularity'] / 100.0
+        pop_contribution = pop_score * abs(self.weights.popularity)
+        reasons.append(f"Popularity: {pop_contribution:.2f}")
+        score += pop_contribution
+
+        # Release decade (0-1 range with soft decay)
+        target_decade = user_prefs.get('target_release_decade', 2020)
+        decade_distance = abs(song['release_decade'] - target_decade) / 60.0
+        decade_score = max(0.0, 1.0 - decade_distance)
+        decade_contribution = decade_score * self.weights.decade
+        reasons.append(f"Release decade: {decade_contribution:.2f}")
+        score += decade_contribution
+
+        return (score, reasons)
 
 class Recommender:
     """
@@ -223,6 +350,82 @@ def emotional_arc_similarity(arc1: str, arc2: str) -> float:
         return 0.6
     return 0.2
 
+# Scoring Mode Definitions
+GENRE_FIRST = WeightedScoringStrategy(
+    name="Genre-First (Default)",
+    weights=ScoringWeights(
+        genre=2.0,
+        mood=2.0,
+        energy=1.5,
+        acousticness=1.0,
+        danceability=0.3,
+        vocal_style=0.6,
+        production=0.6,
+        emotional_arc=0.6,
+        popularity=0.6,
+        decade=0.6
+    )
+)
+
+DISCOVERY = WeightedScoringStrategy(
+    name="Discovery Mode",
+    weights=ScoringWeights(
+        genre=0.2,
+        mood=2.0,
+        energy=2.0,
+        acousticness=0.5,
+        danceability=0.5,
+        vocal_style=0.5,
+        production=0.8,
+        emotional_arc=0.8,
+        popularity=-0.5,
+        decade=0.3
+    )
+)
+
+NICHE_FRIENDLY = WeightedScoringStrategy(
+    name="Niche-Friendly Mode",
+    weights=ScoringWeights(
+        genre=2.5,
+        mood=2.0,
+        energy=1.0,
+        acousticness=0.8,
+        danceability=0.2,
+        vocal_style=0.6,
+        production=0.6,
+        emotional_arc=0.6,
+        popularity=-0.5,
+        decade=0.8
+    )
+)
+
+PERSONALITY = WeightedScoringStrategy(
+    name="Personality-Based Mode",
+    weights=ScoringWeights(
+        genre=1.0,
+        mood=1.0,
+        energy=1.0,
+        acousticness=0.5,
+        danceability=0.3,
+        vocal_style=1.5,
+        production=1.5,
+        emotional_arc=1.0,
+        popularity=0.4,
+        decade=0.4
+    )
+)
+
+SCORING_MODES = {
+    "genre-first": GENRE_FIRST,
+    "discovery": DISCOVERY,
+    "niche-friendly": NICHE_FRIENDLY,
+    "personality": PERSONALITY,
+}
+
+def get_strategy(mode_name: str) -> ScoringStrategy:
+    """Get a scoring strategy by name, default to genre-first."""
+    return SCORING_MODES.get(mode_name, GENRE_FIRST)
+
 def score_song_advanced(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
     """Score using GMEWS plus advanced features with consistent gradual scoring."""
     base_score, base_reasons = score_song(user_prefs, song)
@@ -270,9 +473,14 @@ def score_song_advanced(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]
 
     return (total_score, all_reasons)
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5, use_advanced: bool = False) -> List[Tuple[Dict, float, str]]:
-    """Score all songs and return top-K ranked by score descending."""
-    score_func = score_song_advanced if use_advanced else score_song
+def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5, mode: str = "genre-first", use_advanced: bool = False) -> List[Tuple[Dict, float, str]]:
+    """Score all songs using the specified mode and return top-K ranked by score descending."""
+    if use_advanced:
+        score_func = score_song_advanced
+    else:
+        strategy = get_strategy(mode)
+        score_func = strategy.score
+
     scored_songs = [
         (song, score, "\n".join(reasons))
         for song in songs
