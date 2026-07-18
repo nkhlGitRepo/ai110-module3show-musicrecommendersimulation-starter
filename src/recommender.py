@@ -488,3 +488,76 @@ def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5, mode: str =
     ]
 
     return sorted(scored_songs, key=lambda x: x[1], reverse=True)[:k]
+
+def recommend_songs_with_diversity(
+    user_prefs: Dict,
+    songs: List[Dict],
+    k: int = 5,
+    mode: str = "genre-first",
+    use_advanced: bool = False,
+    artist_penalty: float = 0.5,
+    genre_penalty: float = 0.3,
+) -> List[Tuple[Dict, float, str]]:
+    """Score songs and iteratively build top-K with artist and genre diversity penalties.
+
+    Uses dynamic penalization: as recommendations are selected, future songs from the same
+    artist or genre receive progressively lower scores. This prevents recommendations from
+    being dominated by a single artist or genre while still allowing exceptions if songs
+    are high-quality enough.
+
+    Args:
+        user_prefs: User preference dict
+        songs: List of song dicts
+        k: Number of recommendations to return
+        mode: Scoring mode name (genre-first, discovery, niche-friendly, personality)
+        use_advanced: Whether to use advanced scoring
+        artist_penalty: Penalty multiplier for duplicate artists (0.0-1.0, default 0.5)
+        genre_penalty: Penalty multiplier for duplicate genres (0.0-1.0, default 0.3)
+
+    Returns:
+        List of (song, score, explanation) tuples, top-k ranked with diversity
+    """
+    if use_advanced:
+        score_func = score_song_advanced
+    else:
+        strategy = get_strategy(mode)
+        score_func = strategy.score
+
+    recommendations = []
+    artists_used = set()
+    genres_used = set()
+    remaining_songs = songs.copy()
+
+    for i in range(k):
+        if not remaining_songs:
+            break
+
+        # Score all remaining songs (simplified unpacking)
+        scored = [
+            (song, *score_func(user_prefs, song))
+            for song in remaining_songs
+        ]
+
+        # Apply artist and genre penalties for duplicate selections
+        penalized = []
+        for song, score, reasons in scored:
+            artist_factor = (1.0 - artist_penalty) if song['artist'] in artists_used else 1.0
+            genre_factor = (1.0 - genre_penalty) if song['genre'] in genres_used else 1.0
+            # Penalties compound multiplicatively when both apply
+            penalized_score = score * artist_factor * genre_factor
+            penalized.append((song, penalized_score, reasons, score))
+
+        # Pick best-scoring song after penalty application
+        if penalized:
+            best_song, _, best_reasons, original_score = max(
+                penalized, key=lambda x: x[1]
+            )
+
+            # Add to recommendations (return original score, not penalized)
+            recommendations.append((best_song, original_score, "\n".join(best_reasons)))
+            artists_used.add(best_song['artist'])
+            genres_used.add(best_song['genre'])
+            remaining_songs.remove(best_song)
+
+    # Sort by original scores to maintain quality ranking
+    return sorted(recommendations, key=lambda x: x[1], reverse=True)

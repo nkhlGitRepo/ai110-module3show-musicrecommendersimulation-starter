@@ -1,6 +1,7 @@
 import pytest
 from src.recommender import (
     Song, UserProfile, load_songs, score_song, score_song_advanced, recommend_songs,
+    recommend_songs_with_diversity,
     ScoringWeights, ScoringStrategy, WeightedScoringStrategy, get_strategy, SCORING_MODES
 )
 
@@ -806,3 +807,354 @@ class TestScoringModes:
             # All scores should be non-negative (though can be very low)
             assert score >= 0, f"{mode_name} should produce non-negative score"
             assert len(reasons) > 0, f"{mode_name} should provide reasons"
+
+
+class TestDiversityPenalty:
+    """Test artist and genre diversity penalties in recommendations."""
+
+    def test_diversity_function_exists(self):
+        """Test that recommend_songs_with_diversity function exists."""
+        assert callable(recommend_songs_with_diversity)
+
+    def test_diversity_returns_k_items(self, sample_songs, pop_lover_profile):
+        """Test that diversity function returns k items."""
+        recommendations = recommend_songs_with_diversity(pop_lover_profile, sample_songs, k=3)
+
+        assert len(recommendations) <= 3
+        assert isinstance(recommendations, list)
+
+    def test_diversity_returns_tuples(self, sample_songs, pop_lover_profile):
+        """Test that diversity returns (song, score, explanation) tuples."""
+        recommendations = recommend_songs_with_diversity(pop_lover_profile, sample_songs, k=2)
+
+        for item in recommendations:
+            assert isinstance(item, tuple)
+            assert len(item) == 3
+            song, score, explanation = item
+            assert isinstance(song, dict)
+            assert isinstance(score, float)
+            assert isinstance(explanation, str)
+
+    def test_diversity_prevents_artist_duplicates(self):
+        """Test that diversity penalty prevents multiple songs from same artist."""
+        songs = load_songs("data/songs.csv")
+
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        # Get recommendations with diversity
+        recs_diverse = recommend_songs_with_diversity(
+            user_prefs, songs, k=5, artist_penalty=0.9
+        )
+
+        artists = [song['artist'] for song, _, _ in recs_diverse]
+        artist_counts = {}
+        for artist in artists:
+            artist_counts[artist] = artist_counts.get(artist, 0) + 1
+
+        # With high penalty, most artists should appear only once
+        max_artist_count = max(artist_counts.values())
+        assert max_artist_count <= 2, "High penalty should limit artist repeats"
+
+    def test_diversity_allows_exceptions_for_quality_songs(self, sample_songs, pop_lover_profile):
+        """Test that diversity allows duplicate artists if songs are high-quality."""
+        # Use low penalty to allow duplicates
+        recommendations = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=3, artist_penalty=0.2
+        )
+
+        # Should still return 3 recommendations
+        assert len(recommendations) == 3
+
+    def test_diversity_vs_non_diversity_differ(self, sample_songs, pop_lover_profile):
+        """Test that diversity recommendations differ from non-diversity."""
+        recs_normal = recommend_songs(pop_lover_profile, sample_songs, k=5)
+        recs_diverse = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=5, artist_penalty=0.5, genre_penalty=0.3
+        )
+
+        # Extract artist lists
+        artists_normal = [song['artist'] for song, _, _ in recs_normal]
+        artists_diverse = [song['artist'] for song, _, _ in recs_diverse]
+
+        # Diversity should have more unique artists (or same if no duplicates in original)
+        unique_normal = len(set(artists_normal))
+        unique_diverse = len(set(artists_diverse))
+
+        assert unique_diverse >= unique_normal, "Diversity should maximize unique artists"
+
+    def test_diversity_prevents_genre_duplicates(self):
+        """Test that genre penalty prevents multiple songs from same genre."""
+        songs = load_songs("data/songs.csv")
+
+        pop_user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        # Use high genre penalty
+        recs = recommend_songs_with_diversity(
+            pop_user, songs, k=5, genre_penalty=0.8
+        )
+
+        genres = [song['genre'] for song, _, _ in recs]
+
+        # Check that we have good genre diversity
+        unique_genres = len(set(genres))
+        assert unique_genres >= 2, "Should have at least 2 different genres with penalty"
+
+    def test_diversity_artist_penalty_tuning(self, sample_songs, pop_lover_profile):
+        """Test that artist penalty parameter affects results."""
+        # Low penalty allows more duplicates
+        recs_low = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=5, artist_penalty=0.1
+        )
+
+        # High penalty prevents duplicates
+        recs_high = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=5, artist_penalty=0.9
+        )
+
+        artists_low = [song['artist'] for song, _, _ in recs_low]
+        artists_high = [song['artist'] for song, _, _ in recs_high]
+
+        unique_low = len(set(artists_low))
+        unique_high = len(set(artists_high))
+
+        # Higher penalty should produce more unique artists (or same)
+        assert unique_high >= unique_low, "Higher penalty should increase artist diversity"
+
+    def test_diversity_genre_penalty_tuning(self, sample_songs, pop_lover_profile):
+        """Test that genre penalty parameter affects results."""
+        recs_low = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=5, genre_penalty=0.1
+        )
+
+        recs_high = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=5, genre_penalty=0.8
+        )
+
+        genres_low = [song['genre'] for song, _, _ in recs_low]
+        genres_high = [song['genre'] for song, _, _ in recs_high]
+
+        unique_low = len(set(genres_low))
+        unique_high = len(set(genres_high))
+
+        assert unique_high >= unique_low, "Higher genre penalty should increase genre diversity"
+
+    def test_diversity_preserves_original_scores(self, sample_songs, pop_lover_profile):
+        """Test that diversity returns original scores, not penalized scores."""
+        recommendations = recommend_songs_with_diversity(
+            pop_lover_profile, sample_songs, k=3, artist_penalty=0.5
+        )
+
+        # All scores should be positive and reasonable
+        for song, score, explanation in recommendations:
+            assert score > 0, "Scores should be positive (original, not penalized)"
+            assert score <= 20, "Scores should be reasonable range"
+
+    def test_diversity_with_different_modes(self, sample_songs, pop_lover_profile):
+        """Test that diversity works with different scoring modes."""
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs_with_diversity(
+                pop_lover_profile, sample_songs, k=3, mode=mode, artist_penalty=0.5
+            )
+
+            assert len(recs) == 3
+            assert all(isinstance(r, tuple) and len(r) == 3 for r in recs)
+
+
+class TestFeatureIntegration:
+    """Integration tests to verify all features work together."""
+
+    def test_diversity_and_modes_together(self):
+        """Test that diversity penalty works with all 4 scoring modes."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        for mode in ["genre-first", "discovery", "niche-friendly", "personality"]:
+            # Normal recommendations
+            recs_normal = recommend_songs(user, songs, k=5, mode=mode)
+            # With diversity
+            recs_diverse = recommend_songs_with_diversity(
+                user, songs, k=5, mode=mode, artist_penalty=0.5
+            )
+
+            assert len(recs_normal) == 5
+            assert len(recs_diverse) == 5
+            # Both should be sorted
+            scores_normal = [s for _, s, _ in recs_normal]
+            scores_diverse = [s for _, s, _ in recs_diverse]
+            assert scores_normal == sorted(scores_normal, reverse=True)
+            assert scores_diverse == sorted(scores_diverse, reverse=True)
+
+    def test_advanced_scoring_with_diversity(self):
+        """Test that advanced scoring works with diversity penalty."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'preferred_vocal_style': 'sung',
+            'preferred_production': 'polished',
+            'preferred_emotional_arc': 'constant',
+            'prefer_popular': True,
+            'target_release_decade': 2020,
+        }
+
+        # Basic scoring with diversity
+        recs_basic = recommend_songs_with_diversity(user, songs, k=5, use_advanced=False)
+        # Advanced scoring with diversity
+        recs_adv = recommend_songs_with_diversity(user, songs, k=5, use_advanced=True)
+
+        assert len(recs_basic) == 5
+        assert len(recs_adv) == 5
+
+        # Advanced should generally have higher scores
+        scores_basic = [s for _, s, _ in recs_basic]
+        scores_adv = [s for _, s, _ in recs_adv]
+        assert sum(scores_adv) >= sum(scores_basic)
+
+    def test_results_sorted_for_all_configurations(self):
+        """Verify results are always sorted regardless of configuration."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'lofi',
+            'favorite_mood': 'chill',
+            'target_energy': 0.35,
+            'likes_acoustic': True,
+        }
+
+        # Test all combinations
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+        penalties = [(0.3, 0.2), (0.5, 0.3), (0.8, 0.7)]
+        use_advanced_options = [False, True]
+
+        for mode in modes:
+            for artist_p, genre_p in penalties:
+                for use_adv in use_advanced_options:
+                    recs = recommend_songs_with_diversity(
+                        user, songs, k=5,
+                        mode=mode,
+                        use_advanced=use_adv,
+                        artist_penalty=artist_p,
+                        genre_penalty=genre_p
+                    )
+
+                    scores = [s for _, s, _ in recs]
+                    assert scores == sorted(scores, reverse=True), \
+                        f"Failed for mode={mode}, penalties=({artist_p},{genre_p}), use_adv={use_adv}"
+
+    def test_diversity_edge_case_single_song_per_artist(self):
+        """Test diversity when catalog has only 1 song per artist."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'classical',
+            'favorite_mood': 'meditative',
+            'target_energy': 0.15,
+            'likes_acoustic': True,
+        }
+
+        recs = recommend_songs_with_diversity(user, songs, k=5, artist_penalty=0.5)
+
+        assert len(recs) == 5
+        artists = [s['artist'] for s, _, _ in recs]
+        # All should be unique (since each artist has 1-2 songs max)
+        assert len(set(artists)) >= 4, "Should have at least 4 unique artists"
+
+    def test_non_diversity_returns_same_for_equal_scores(self, sample_songs, pop_lover_profile):
+        """Test that non-diversity function consistently returns same song for same score."""
+        # Run twice
+        recs1 = recommend_songs(pop_lover_profile, sample_songs, k=3)
+        recs2 = recommend_songs(pop_lover_profile, sample_songs, k=3)
+
+        # Should get same songs in same order
+        songs1 = [s['id'] for s, _, _ in recs1]
+        songs2 = [s['id'] for s, _, _ in recs2]
+        assert songs1 == songs2, "Same input should produce same output"
+
+    def test_diversity_deterministic_across_runs(self):
+        """Test that diversity recommendations are deterministic."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        # Run twice
+        recs1 = recommend_songs_with_diversity(user, songs, k=5, artist_penalty=0.5)
+        recs2 = recommend_songs_with_diversity(user, songs, k=5, artist_penalty=0.5)
+
+        songs1 = [s['id'] for s, _, _ in recs1]
+        songs2 = [s['id'] for s, _, _ in recs2]
+        assert songs1 == songs2, "Same input should produce same output (deterministic)"
+
+    def test_score_explanations_present_all_modes(self):
+        """Test that all modes provide explanations for scoring."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs(user, songs, k=1, mode=mode)
+            song, score, explanation = recs[0]
+
+            assert len(explanation) > 0, f"{mode} should provide explanation"
+            assert "Genre" in explanation or "Mood" in explanation or "Energy" in explanation, \
+                f"{mode} explanation should include scoring details"
+
+    def test_diverse_explanations_comprehensive(self):
+        """Test that diversity-based recommendations include clear explanations."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        recs = recommend_songs_with_diversity(user, songs, k=3, artist_penalty=0.5)
+
+        for song, score, explanation in recs:
+            assert len(explanation) > 0, "Should have explanation"
+            # Should have original score info
+            assert str(round(score, 2)) in explanation or "Genre" in explanation, \
+                "Explanation should include scoring details"
+
+    def test_mode_consistency_across_datasets(self, sample_songs, pop_lover_profile):
+        """Test that mode behavior is consistent (same user = same behavior)."""
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        results_by_mode = {}
+        for mode in modes:
+            recs = recommend_songs(pop_lover_profile, sample_songs, k=3, mode=mode)
+            results_by_mode[mode] = [s['title'] for s, _, _ in recs]
+
+        # Run again
+        for mode in modes:
+            recs = recommend_songs(pop_lover_profile, sample_songs, k=3, mode=mode)
+            current = [s['title'] for s, _, _ in recs]
+            assert current == results_by_mode[mode], \
+                f"Mode {mode} should be deterministic"

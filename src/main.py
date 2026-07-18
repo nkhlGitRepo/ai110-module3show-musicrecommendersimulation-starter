@@ -9,7 +9,7 @@ You will implement the functions in recommender.py:
 - recommend_songs
 """
 
-from .recommender import load_songs, recommend_songs, SCORING_MODES
+from .recommender import load_songs, recommend_songs, recommend_songs_with_diversity, SCORING_MODES
 import argparse
 
 
@@ -79,7 +79,13 @@ ADVERSARIAL_PROFILES = {
 USER_PROFILES.update(ADVERSARIAL_PROFILES)
 
 
-def main(profile_name: str = "high_energy_pop", mode: str = "genre-first") -> None:
+def main(
+    profile_name: str = "high_energy_pop",
+    mode: str = "genre-first",
+    diversity: bool = False,
+    artist_penalty: float = 0.5,
+    genre_penalty: float = 0.3,
+) -> None:
     songs = load_songs("data/songs.csv")
     print(f"Successfully loaded {len(songs)} songs.\n")
 
@@ -98,13 +104,22 @@ def main(profile_name: str = "high_energy_pop", mode: str = "genre-first") -> No
         return
 
     user_prefs = USER_PROFILES[profile_name]
-    recommendations = recommend_songs(user_prefs, songs, k=5, mode=mode)
+
+    if diversity:
+        recommendations = recommend_songs_with_diversity(
+            user_prefs, songs, k=5, mode=mode,
+            artist_penalty=artist_penalty, genre_penalty=genre_penalty
+        )
+    else:
+        recommendations = recommend_songs(user_prefs, songs, k=5, mode=mode)
 
     print("\n" + "="*70)
     print(f"TOP RECOMMENDATIONS FOR: {profile_name.upper().replace('_', ' ')}")
     print(f"Profile: genre={user_prefs['favorite_genre']}, mood={user_prefs['favorite_mood']}, " +
           f"energy={user_prefs['target_energy']}, acoustic={'yes' if user_prefs['likes_acoustic'] else 'no'}")
     print(f"Mode: {SCORING_MODES[mode].name}")
+    if diversity:
+        print(f"Diversity: Enabled (artist_penalty={artist_penalty}, genre_penalty={genre_penalty})")
     print("="*70)
 
     if recommendations:
@@ -127,5 +142,17 @@ if __name__ == "__main__":
                         help="User profile name (default: high_energy_pop)")
     parser.add_argument("--mode", type=str, default="genre-first",
                         help="Scoring mode: genre-first, discovery, niche-friendly, personality (default: genre-first)")
+    parser.add_argument("--diversity", action="store_true",
+                        help="Enable artist and genre diversity penalties")
+    parser.add_argument("--artist-penalty", type=float, default=0.5,
+                        help="Artist duplicate penalty (0.0-1.0, default: 0.5)")
+    parser.add_argument("--genre-penalty", type=float, default=0.3,
+                        help="Genre duplicate penalty (0.0-1.0, default: 0.3)")
     args = parser.parse_args()
-    main(profile_name=args.profile, mode=args.mode)
+    main(
+        profile_name=args.profile,
+        mode=args.mode,
+        diversity=args.diversity,
+        artist_penalty=args.artist_penalty,
+        genre_penalty=args.genre_penalty,
+    )
