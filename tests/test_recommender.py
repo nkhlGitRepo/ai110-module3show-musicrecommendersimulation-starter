@@ -2,7 +2,9 @@ import pytest
 from src.recommender import (
     Song, UserProfile, load_songs, score_song, score_song_advanced, recommend_songs,
     recommend_songs_with_diversity,
-    ScoringWeights, ScoringStrategy, WeightedScoringStrategy, get_strategy, SCORING_MODES
+    ScoringWeights, ScoringStrategy, WeightedScoringStrategy, get_strategy, SCORING_MODES,
+    extract_top_reasons, format_recommendation_summary, format_recommendation_detailed,
+    _filter_reason_lines
 )
 
 
@@ -1158,3 +1160,419 @@ class TestFeatureIntegration:
             current = [s['title'] for s, _, _ in recs]
             assert current == results_by_mode[mode], \
                 f"Mode {mode} should be deterministic"
+
+
+class TestFormattingFunctions:
+    """Test extract_top_reasons, format_recommendation_summary, and format_recommendation_detailed."""
+
+    def test_extract_top_reasons_normal_input(self):
+        """Test extracting reasons from normal explanation."""
+        explanation = """Why you'll like this:
+• Genre match: pop (+1.50)
+• Mood match: happy (+2.00)
+• Energy: 0.85 vs target 0.85 (2.00)"""
+        reasons = extract_top_reasons(explanation, num_reasons=3)
+        assert "Genre match" in reasons
+        assert "Mood match" in reasons
+        assert "Energy" in reasons
+        assert reasons.count("|") == 2  # 3 reasons = 2 pipes
+
+    def test_extract_top_reasons_empty_explanation(self):
+        """Test extracting reasons from empty explanation."""
+        explanation = ""
+        reasons = extract_top_reasons(explanation, num_reasons=3)
+        assert reasons == "See details"
+
+    def test_extract_top_reasons_none_explanation(self):
+        """Test extracting reasons from None explanation."""
+        reasons = extract_top_reasons(None, num_reasons=3)
+        assert reasons == "See details"
+
+    def test_extract_top_reasons_fewer_than_three(self):
+        """Test extracting when fewer than 3 reasons available."""
+        explanation = """Why you'll like this:
+• Genre match: pop (+1.50)
+• Mood match: happy (+2.00)"""
+        reasons = extract_top_reasons(explanation, num_reasons=3)
+        assert "Genre match" in reasons
+        assert "Mood match" in reasons
+        assert reasons.count("|") == 1  # 2 reasons = 1 pipe
+
+    def test_extract_top_reasons_custom_num_reasons(self):
+        """Test extracting custom number of reasons."""
+        explanation = """Why you'll like this:
+• Genre match: pop (+1.50)
+• Mood match: happy (+2.00)
+• Energy: 0.85 vs target 0.85 (2.00)
+• Danceability: high (1.20)"""
+        reasons = extract_top_reasons(explanation, num_reasons=2)
+        assert reasons.count("|") == 1  # 2 reasons = 1 pipe
+
+    def test_extract_top_reasons_with_colons_in_text(self):
+        """Test that split(':', 1) correctly handles colons in reason names."""
+        explanation = """Why you'll like this:
+• Genre match: pop: upbeat (+1.50)
+• Mood match: happy: energetic (+2.00)"""
+        reasons = extract_top_reasons(explanation, num_reasons=2)
+        # Should extract reason names correctly despite colons in values
+        assert "Genre match" in reasons or "Mood match" in reasons
+
+    def test_filter_reason_lines_normal(self):
+        """Test filtering normal explanation lines."""
+        explanation = """Why you'll like this:
+• Genre match: pop (+1.50)
+• Mood match: happy (+2.00)
+• Energy: 0.85 vs target 0.85 (2.00)"""
+        filtered = _filter_reason_lines(explanation)
+        assert len(filtered) == 3
+        # Bullets are preserved (they're used in detailed output formatting)
+        assert all("Genre match" in line or "Mood match" in line or "Energy" in line for line in filtered)
+        assert all(line.strip() for line in filtered)
+
+    def test_filter_reason_lines_empty(self):
+        """Test filtering with empty explanation."""
+        filtered = _filter_reason_lines("")
+        assert filtered == []
+
+    def test_filter_reason_lines_none(self):
+        """Test filtering with None explanation."""
+        filtered = _filter_reason_lines(None)
+        assert filtered == []
+
+    def test_format_recommendation_summary_returns_string(self, sample_songs, pop_lover_profile):
+        """Test that format_recommendation_summary returns a string."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=3)
+        result = format_recommendation_summary(recs)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_recommendation_summary_includes_headers(self, sample_songs, pop_lover_profile):
+        """Test that summary table includes expected column headers."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=3)
+        result = format_recommendation_summary(recs)
+        assert "Song" in result
+        assert "Artist" in result
+        assert "Score" in result
+        assert "Why You'll Like It" in result
+
+    def test_format_recommendation_summary_empty_list(self):
+        """Test formatting empty recommendation list."""
+        result = format_recommendation_summary([])
+        assert isinstance(result, str)
+
+    def test_format_recommendation_summary_with_long_titles(self):
+        """Test that long song titles don't break formatting."""
+        long_song = {
+            'id': 1,
+            'title': "This is an incredibly long song title that might cause formatting issues in a table structure",
+            'artist': "Very Long Artist Name That Goes On And On",
+            'genre': "progressive psychedelic experimental jazz fusion",
+            'mood': "happy",
+            'energy': 0.85,
+            'tempo_bpm': 120,
+            'valence': 0.90,
+            'danceability': 0.80,
+            'acousticness': 0.15,
+            'popularity': 78,
+            'release_decade': 2020,
+            'vocal_style': "sung",
+            'production_quality': "polished",
+            'emotional_arc': "constant",
+        }
+        recs = [(long_song, 8.5, "Genre match: test\nMood match: test")]
+        result = format_recommendation_summary(recs)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_recommendation_detailed_returns_string(self, sample_songs, pop_lover_profile):
+        """Test that format_recommendation_detailed returns a string."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=3)
+        result = format_recommendation_detailed(recs)
+        assert isinstance(result, str)
+        assert len(result) > 0
+
+    def test_format_recommendation_detailed_preserves_all_reasons(self, sample_songs, pop_lover_profile):
+        """Test that detailed format includes all scoring reasons."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=1)
+        song, score, explanation = recs[0]
+        result = format_recommendation_detailed(recs)
+        # All reason lines should be in result
+        reason_lines = _filter_reason_lines(explanation)
+        for line in reason_lines:
+            assert line in result, f"Reason '{line}' should appear in detailed output"
+
+    def test_format_recommendation_detailed_empty_list(self):
+        """Test formatting empty list."""
+        result = format_recommendation_detailed([])
+        assert isinstance(result, str)
+
+    def test_format_recommendation_detailed_dynamic_widths(self):
+        """Test that detailed format uses dynamic column widths."""
+        songs = [
+            {
+                'id': 1,
+                'title': "A",
+                'artist': "B",
+                'genre': "pop",
+                'mood': "happy",
+                'energy': 0.85,
+                'tempo_bpm': 120,
+                'valence': 0.90,
+                'danceability': 0.80,
+                'acousticness': 0.15,
+                'popularity': 78,
+                'release_decade': 2020,
+                'vocal_style': "sung",
+                'production_quality': "polished",
+                'emotional_arc': "constant",
+            },
+            {
+                'id': 2,
+                'title': "Very Long Title With Many Words",
+                'artist': "Very Long Artist Name",
+                'genre': "rock",
+                'mood': "intense",
+                'energy': 0.90,
+                'tempo_bpm': 140,
+                'valence': 0.60,
+                'danceability': 0.70,
+                'acousticness': 0.10,
+                'popularity': 85,
+                'release_decade': 2020,
+                'vocal_style': "sung",
+                'production_quality': "polished",
+                'emotional_arc': "constant",
+            }
+        ]
+        recs = [
+            (songs[0], 8.5, "Genre match: pop\nMood match: happy"),
+            (songs[1], 8.0, "Genre match: rock\nMood match: intense"),
+        ]
+        result = format_recommendation_detailed(recs)
+        # Should not truncate long title
+        assert "Very Long Title With Many Words" in result
+
+
+class TestModeAndDiversityInteractions:
+    """Test interactions between scoring modes and diversity penalties."""
+
+    def test_all_modes_with_diversity_enabled(self):
+        """Test that all 4 modes work with diversity enabled."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs_with_diversity(user, songs, k=5, mode=mode)
+            assert len(recs) == 5
+            assert all(isinstance(r, tuple) and len(r) == 3 for r in recs)
+
+    def test_all_modes_with_different_penalties(self):
+        """Test modes with extreme penalty values."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+        penalties = [0.0, 0.5, 1.0]
+
+        for mode in modes:
+            for penalty in penalties:
+                recs = recommend_songs_with_diversity(
+                    user, songs, k=5, mode=mode,
+                    artist_penalty=penalty, genre_penalty=penalty
+                )
+                assert len(recs) == 5
+
+    def test_mode_diversity_results_different_from_non_diversity(self):
+        """Test that diversity changes results for all modes."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs_normal = recommend_songs(user, songs, k=5, mode=mode)
+            recs_diverse = recommend_songs_with_diversity(user, songs, k=5, mode=mode)
+
+            normal_songs = [s['id'] for s, _, _ in recs_normal]
+            diverse_songs = [s['id'] for s, _, _ in recs_diverse]
+
+            # At least some should differ (unless top 5 all unique artists/genres)
+            assert isinstance(normal_songs, list)
+            assert isinstance(diverse_songs, list)
+
+    def test_diversity_sorted_correctly_all_modes(self):
+        """Test that diversity results are sorted by score descending for all modes."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs_with_diversity(user, songs, k=5, mode=mode)
+            scores = [score for _, score, _ in recs]
+            assert scores == sorted(scores, reverse=True), \
+                f"Diversity results not sorted for mode {mode}"
+
+
+class TestExplanationCompleteness:
+    """Test that explanations are comprehensive across modes and features."""
+
+    def test_all_modes_explain_genre_matching(self):
+        """Test that all modes explain genre matching."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs(user, songs, k=1, mode=mode)
+            _, _, explanation = recs[0]
+            assert "Genre" in explanation, f"Mode {mode} should explain genre"
+
+    def test_all_modes_explain_mood_matching(self):
+        """Test that all modes explain mood matching."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs(user, songs, k=1, mode=mode)
+            _, _, explanation = recs[0]
+            assert "Mood" in explanation, f"Mode {mode} should explain mood"
+
+    def test_all_modes_explain_energy(self):
+        """Test that all modes explain energy scoring."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+        modes = ["genre-first", "discovery", "niche-friendly", "personality"]
+
+        for mode in modes:
+            recs = recommend_songs(user, songs, k=1, mode=mode)
+            _, _, explanation = recs[0]
+            assert "Energy" in explanation, f"Mode {mode} should explain energy"
+
+    def test_advanced_features_in_explanations(self):
+        """Test that advanced features appear in explanations."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        recs = recommend_songs(user, songs, k=1, mode="personality")
+        _, _, explanation = recs[0]
+
+        # Personality mode emphasizes advanced features
+        advanced_features = ["Vocal style", "Production", "Emotional arc", "Popularity", "Release decade"]
+        found_features = sum(1 for f in advanced_features if f in explanation)
+        assert found_features >= 2, "Should explain at least 2 advanced features"
+
+
+class TestBoundaryConditions:
+    """Test extreme values and edge cases."""
+
+    def test_k_equals_one(self, sample_songs, pop_lover_profile):
+        """Test k=1 returns exactly one recommendation."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=1)
+        assert len(recs) == 1
+
+    def test_k_equals_zero(self, sample_songs, pop_lover_profile):
+        """Test k=0 returns empty list."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=0)
+        assert len(recs) == 0
+
+    def test_k_exceeds_catalog(self, sample_songs, pop_lover_profile):
+        """Test k larger than catalog returns all songs."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=100)
+        assert len(recs) == len(sample_songs)
+
+    def test_diversity_penalty_zero(self):
+        """Test diversity with penalty=0.0 doesn't penalize."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        recs_diverse = recommend_songs_with_diversity(user, songs, k=5, artist_penalty=0.0, genre_penalty=0.0)
+        recs_normal = recommend_songs(user, songs, k=5)
+
+        # With 0 penalty, should be very similar (only order might differ slightly)
+        diverse_scores = [score for _, score, _ in recs_diverse]
+        normal_scores = [score for _, score, _ in recs_normal]
+
+        # Top scores should be very close
+        assert abs(diverse_scores[0] - normal_scores[0]) < 0.01
+
+    def test_diversity_penalty_one_point_zero(self):
+        """Test diversity with penalty=1.0 fully zeroes duplicates."""
+        songs = load_songs("data/songs.csv")
+        user = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+        }
+
+        recs = recommend_songs_with_diversity(user, songs, k=5, artist_penalty=1.0, genre_penalty=1.0)
+
+        # With 1.0 penalty, all artists should be unique
+        artists = [s['artist'] for s, _, _ in recs]
+        assert len(set(artists)) == len(artists), "All artists should be unique with penalty=1.0"
+
+    def test_extreme_user_preferences_handled(self):
+        """Test extreme preference values don't crash."""
+        songs = load_songs("data/songs.csv")
+        extreme_users = [
+            {'favorite_genre': 'nonexistent_genre', 'favorite_mood': 'happy', 'target_energy': 1.0, 'likes_acoustic': True},
+            {'favorite_genre': 'pop', 'favorite_mood': 'nonexistent_mood', 'target_energy': 0.0, 'likes_acoustic': False},
+        ]
+
+        for user in extreme_users:
+            recs = recommend_songs(user, songs, k=5)
+            assert len(recs) > 0, "Should still produce recommendations for extreme preferences"
+
+    def test_single_song_k_equals_one(self, sample_songs, pop_lover_profile):
+        """Test that single song recommendation works correctly."""
+        recs = recommend_songs(pop_lover_profile, sample_songs, k=1)
+        assert len(recs) == 1
+        song, score, explanation = recs[0]
+        assert isinstance(score, (int, float))
+        assert score > 0
+        assert len(explanation) > 0

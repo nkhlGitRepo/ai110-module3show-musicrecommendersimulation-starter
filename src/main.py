@@ -9,7 +9,10 @@ You will implement the functions in recommender.py:
 - recommend_songs
 """
 
-from .recommender import load_songs, recommend_songs, recommend_songs_with_diversity, SCORING_MODES
+from .recommender import (
+    load_songs, recommend_songs, recommend_songs_with_diversity, SCORING_MODES,
+    format_recommendation_summary, format_recommendation_detailed
+)
 import argparse
 
 
@@ -85,6 +88,7 @@ def main(
     diversity: bool = False,
     artist_penalty: float = 0.5,
     genre_penalty: float = 0.3,
+    verbose: bool = False,
 ) -> None:
     songs = load_songs("data/songs.csv")
     print(f"Successfully loaded {len(songs)} songs.\n")
@@ -113,25 +117,23 @@ def main(
     else:
         recommendations = recommend_songs(user_prefs, songs, k=5, mode=mode)
 
-    print("\n" + "="*70)
+    print("\n" + "="*80)
     print(f"TOP RECOMMENDATIONS FOR: {profile_name.upper().replace('_', ' ')}")
+    print("="*80)
     print(f"Profile: genre={user_prefs['favorite_genre']}, mood={user_prefs['favorite_mood']}, " +
           f"energy={user_prefs['target_energy']}, acoustic={'yes' if user_prefs['likes_acoustic'] else 'no'}")
     print(f"Mode: {SCORING_MODES[mode].name}")
     if diversity:
         print(f"Diversity: Enabled (artist_penalty={artist_penalty}, genre_penalty={genre_penalty})")
-    print("="*70)
+    print("="*80)
 
     if recommendations:
-        for idx, rec in enumerate(recommendations, 1):
-            song, score, explanation = rec
-            print(f"\n{idx}. {song['title'].upper()}")
-            print(f"   Artist: {song['artist']} | Genre: {song['genre']}")
-            print(f"   Score: {score:.2f} / 6.0")
-            print(f"\n   Why you'll like it:")
-            for reason in explanation.split('\n'):
-                print(f"   • {reason}")
-            print(f"\n   {'-'*66}")
+        if verbose:
+            print(format_recommendation_detailed(recommendations))
+            print("\nTip: Run without --verbose for a concise summary view")
+        else:
+            print(format_recommendation_summary(recommendations))
+            print("\nTip: Run with --verbose to see all scoring reasons")
     else:
         print("No recommendations found.")
 
@@ -148,6 +150,8 @@ if __name__ == "__main__":
                         help="Artist duplicate penalty (0.0-1.0, default: 0.5)")
     parser.add_argument("--genre-penalty", type=float, default=0.3,
                         help="Genre duplicate penalty (0.0-1.0, default: 0.3)")
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Show all scoring reasons (default: summary table)")
     args = parser.parse_args()
     main(
         profile_name=args.profile,
@@ -155,4 +159,5 @@ if __name__ == "__main__":
         diversity=args.diversity,
         artist_penalty=args.artist_penalty,
         genre_penalty=args.genre_penalty,
+        verbose=args.verbose,
     )

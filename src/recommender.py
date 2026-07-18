@@ -3,6 +3,8 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 import csv
 
+from tabulate import tabulate
+
 @dataclass
 class Song:
     """
@@ -561,3 +563,114 @@ def recommend_songs_with_diversity(
 
     # Sort by original scores to maintain quality ranking
     return sorted(recommendations, key=lambda x: x[1], reverse=True)
+
+
+def _filter_reason_lines(explanation: str) -> List[str]:
+    """Filter and clean explanation lines, removing headers and empty lines.
+
+    Args:
+        explanation: Multi-line explanation from score() functions
+
+    Returns:
+        List of cleaned reason lines
+    """
+    if not explanation:
+        return []
+
+    lines = explanation.split('\n')
+    return [line.strip() for line in lines
+            if line.strip() and not line.strip().startswith('Why')]
+
+
+def extract_top_reasons(explanation: str, num_reasons: int = 3) -> str:
+    """Extract top scoring reasons from explanation text.
+
+    Args:
+        explanation: Multi-line explanation from score() functions
+        num_reasons: Number of reasons to extract (default 3)
+
+    Returns:
+        Pipe-separated string of top reasons (e.g., "Genre match | Mood match | Energy")
+    """
+    filtered_lines = _filter_reason_lines(explanation)
+    reasons = []
+
+    for line in filtered_lines:
+        # Extract reason name (text before colon)
+        if ':' in line:
+            reason_name = line.split(':', 1)[0].strip('•').strip()
+            if reason_name:
+                reasons.append(reason_name)
+
+        if len(reasons) >= num_reasons:
+            break
+
+    return " | ".join(reasons) if reasons else "See details"
+
+
+def format_recommendation_summary(recommendations: List[Tuple]) -> str:
+    """Format recommendations as a summary table with top reasons.
+
+    Args:
+        recommendations: List of (song, score, explanation) tuples
+
+    Returns:
+        Formatted table string
+    """
+    data = []
+    for rank, (song, score, explanation) in enumerate(recommendations, 1):
+        reason_summary = extract_top_reasons(explanation, num_reasons=3)
+
+        data.append([
+            rank,
+            song['title'],
+            song['artist'],
+            song['genre'],
+            f"{score:.2f}",
+            reason_summary
+        ])
+
+    headers = ["#", "Song", "Artist", "Genre", "Score", "Why You'll Like It"]
+    return tabulate(data, headers=headers, tablefmt="simple")
+
+
+def format_recommendation_detailed(recommendations: List[Tuple]) -> str:
+    """Format recommendations with all scoring reasons (verbose mode).
+
+    Args:
+        recommendations: List of (song, score, explanation) tuples
+
+    Returns:
+        Formatted detailed output string
+    """
+    lines = []
+
+    # Calculate dynamic column widths
+    if recommendations:
+        max_title = max(len(s['title']) for s, _, _ in recommendations)
+        max_artist = max(len(s['artist']) for s, _, _ in recommendations)
+        max_genre = max(len(s['genre']) for s, _, _ in recommendations)
+    else:
+        max_title = max_artist = max_genre = 0
+
+    for rank, (song, score, explanation) in enumerate(recommendations, 1):
+        # Header with dynamic widths
+        title_width = max(max_title, 20)
+        artist_width = max(max_artist, 15)
+        genre_width = max(max_genre, 10)
+
+        header = (f"[{rank}] {song['title']:<{title_width}} | "
+                  f"Artist: {song['artist']:<{artist_width}} | "
+                  f"Genre: {song['genre']:<{genre_width}} | "
+                  f"Score: {score:.2f}")
+        lines.append(header)
+        lines.append("-" * len(header))
+
+        # Reasons using shared filter function
+        filtered_lines = _filter_reason_lines(explanation)
+        for reason_line in filtered_lines:
+            lines.append(f"    • {reason_line}")
+
+        lines.append("")
+
+    return "\n".join(lines)
