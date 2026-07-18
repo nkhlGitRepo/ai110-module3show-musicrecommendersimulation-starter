@@ -18,6 +18,11 @@ class Song:
     valence: float
     danceability: float
     acousticness: float
+    popularity: float
+    release_decade: int
+    vocal_style: str
+    production_quality: str
+    emotional_arc: str
 
 @dataclass
 class UserProfile:
@@ -29,6 +34,11 @@ class UserProfile:
     favorite_mood: str
     target_energy: float
     likes_acoustic: bool
+    preferred_vocal_style: str = "sung"
+    preferred_production: str = "polished"
+    preferred_emotional_arc: str = "constant"
+    prefer_popular: bool = True
+    target_release_decade: int = 2020
 
 class Recommender:
     """
@@ -65,6 +75,11 @@ def load_songs(csv_path: str) -> List[Dict]:
                 'valence': float(row['valence']),
                 'danceability': float(row['danceability']),
                 'acousticness': float(row['acousticness']),
+                'popularity': float(row['popularity']),
+                'release_decade': int(row['release_decade']),
+                'vocal_style': row['vocal_style'],
+                'production_quality': row['production_quality'],
+                'emotional_arc': row['emotional_arc'],
             }
             songs.append(song)
 
@@ -180,12 +195,88 @@ def score_song_experiment_weight_shift(user_prefs: Dict, song: Dict) -> Tuple[fl
 
     return (score, reasons)
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
+def vocal_style_similarity(style1: str, style2: str) -> float:
+    """Calculate similarity between vocal styles (0.0 to 1.0)."""
+    if style1 == style2:
+        return 1.0
+    if {style1, style2} == {'sung', 'rapped'}:
+        return 0.6
+    if {style1, style2} == {'sung', 'spoken'} or {style1, style2} == {'rapped', 'spoken'}:
+        return 0.5
+    return 0.1
+
+def production_quality_similarity(prod1: str, prod2: str) -> float:
+    """Calculate similarity between production qualities (0.0 to 1.0)."""
+    if prod1 == prod2:
+        return 1.0
+    quality_order = {'lo-fi': 0, 'standard': 1, 'polished': 2, 'avant-garde': 1}
+    distance = abs(quality_order.get(prod1, 1) - quality_order.get(prod2, 1))
+    return max(0.1, 1.0 - distance * 0.35)
+
+def emotional_arc_similarity(arc1: str, arc2: str) -> float:
+    """Calculate similarity between emotional arcs (0.0 to 1.0)."""
+    if arc1 == arc2:
+        return 1.0
+    if {arc1, arc2} == {'constant', 'minimal'}:
+        return 0.7
+    if {arc1, arc2} == {'builds', 'evolves'}:
+        return 0.6
+    return 0.2
+
+def score_song_advanced(user_prefs: Dict, song: Dict) -> Tuple[float, List[str]]:
+    """Score using GMEWS plus advanced features with consistent gradual scoring."""
+    base_score, base_reasons = score_song(user_prefs, song)
+
+    advanced_bonuses = []
+    advanced_score = 0.0
+
+    # Vocal style similarity (gradual, 0.0-1.0)
+    vocal_style = user_prefs.get('preferred_vocal_style', 'sung')
+    vocal_score = vocal_style_similarity(song['vocal_style'], vocal_style)
+    advanced_bonuses.append(f"Vocal style: {song['vocal_style']} vs {vocal_style} ({vocal_score:.2f})")
+    advanced_score += vocal_score * 0.6
+
+    # Production quality similarity (gradual, 0.0-1.0)
+    prod_quality = user_prefs.get('preferred_production', 'polished')
+    prod_score = production_quality_similarity(song['production_quality'], prod_quality)
+    advanced_bonuses.append(f"Production: {song['production_quality']} vs {prod_quality} ({prod_score:.2f})")
+    advanced_score += prod_score * 0.6
+
+    # Emotional arc similarity (gradual, 0.0-1.0)
+    arc_pref = user_prefs.get('preferred_emotional_arc', 'constant')
+    arc_score = emotional_arc_similarity(song['emotional_arc'], arc_pref)
+    advanced_bonuses.append(f"Emotional arc: {song['emotional_arc']} vs {arc_pref} ({arc_score:.2f})")
+    advanced_score += arc_score * 0.6
+
+    # Popularity scoring (distance-based, 0-1 range)
+    prefer_pop = user_prefs.get('prefer_popular', True)
+    if prefer_pop:
+        pop_score = song['popularity'] / 100.0
+        advanced_bonuses.append(f"Popularity (popularity-seeking): {song['popularity']:.0f}/100 ({pop_score:.2f})")
+    else:
+        pop_score = 1.0 - (song['popularity'] / 100.0)
+        advanced_bonuses.append(f"Popularity (indie-seeking): {song['popularity']:.0f}/100 ({pop_score:.2f})")
+    advanced_score += pop_score * 0.6
+
+    # Release decade (softer distance decay, normalize by data range)
+    target_decade = user_prefs.get('target_release_decade', 2020)
+    decade_distance = abs(song['release_decade'] - target_decade) / 60.0
+    decade_score = max(0.0, 1.0 - decade_distance)
+    advanced_bonuses.append(f"Release decade: {song['release_decade']} vs {target_decade} ({decade_score:.2f})")
+    advanced_score += decade_score * 0.6
+
+    total_score = base_score + advanced_score
+    all_reasons = base_reasons + advanced_bonuses
+
+    return (total_score, all_reasons)
+
+def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5, use_advanced: bool = False) -> List[Tuple[Dict, float, str]]:
     """Score all songs and return top-K ranked by score descending."""
+    score_func = score_song_advanced if use_advanced else score_song
     scored_songs = [
         (song, score, "\n".join(reasons))
         for song in songs
-        for score, reasons in [score_song(user_prefs, song)]
+        for score, reasons in [score_func(user_prefs, song)]
     ]
 
     return sorted(scored_songs, key=lambda x: x[1], reverse=True)[:k]

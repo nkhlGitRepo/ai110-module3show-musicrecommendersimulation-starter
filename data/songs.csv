@@ -1,21 +1,31 @@
-id,title,artist,genre,mood,energy,tempo_bpm,valence,danceability,acousticness
-1,Sunrise City,Neon Echo,pop,happy,0.82,118,0.84,0.79,0.18
-2,Midnight Coding,LoRoom,lofi,chill,0.42,78,0.56,0.62,0.71
-3,Storm Runner,Voltline,rock,intense,0.91,152,0.48,0.66,0.10
-4,Library Rain,Paper Lanterns,lofi,chill,0.35,72,0.60,0.58,0.86
-5,Gym Hero,Max Pulse,pop,intense,0.93,132,0.77,0.88,0.05
-6,Spacewalk Thoughts,Orbit Bloom,ambient,chill,0.28,60,0.65,0.41,0.92
-7,Coffee Shop Stories,Slow Stereo,jazz,relaxed,0.37,90,0.71,0.54,0.89
-8,Night Drive Loop,Neon Echo,synthwave,moody,0.75,110,0.49,0.73,0.22
-9,Focus Flow,LoRoom,lofi,focused,0.40,80,0.59,0.60,0.78
-10,Rooftop Lights,Indigo Parade,indie pop,happy,0.76,124,0.81,0.82,0.35
-11,Electric Dreams,Pulse Collective,electronic,uplifting,0.87,128,0.92,0.91,0.08
-12,Bach Suite No.1,Classical Ensemble,classical,meditative,0.15,65,0.58,0.12,0.98
-13,Urban Beats,MC Cipher,hip-hop,energetic,0.89,98,0.68,0.84,0.15
-14,Dusty Roads,The Wanderers,country,melancholic,0.52,95,0.42,0.56,0.72
-15,Neon Thoughts,Indie Void,indie,nostalgic,0.61,105,0.64,0.68,0.43
-16,Island Vibes,Reggae Kings,reggae,uplifting,0.68,92,0.85,0.71,0.68
-17,Soul Reflections,Nina Rivers,soul,nostalgic,0.48,88,0.71,0.62,0.76
-18,Glitch Garden,Experimental Labs,experimental,intense,0.79,115,0.51,0.73,0.19
-19,Midnight Blues,The Rooters,blues,melancholic,0.55,85,0.48,0.59,0.81
-20,Bass Drop,Synth Mech,dubstep,dark,0.92,140,0.35,0.78,0.06
+id,title,artist,genre,mood,energy,tempo_bpm,valence,danceability,acousticness,popularity,release_decade,vocal_style,production_quality,emotional_arc
+1,Sunrise City,Neon Echo,pop,happy,0.82,118,0.84,0.79,0.18,78,2020,sung,polished,constant
+2,Midnight Coding,LoRoom,lofi,chill,0.42,78,0.56,0.62,0.71,42,2020,instrumental,lo-fi,constant
+3,Storm Runner,Voltline,rock,intense,0.91,152,0.48,0.66,0.10,65,2010,sung,polished,builds
+4,Library Rain,Paper Lanterns,lofi,chill,0.35,72,0.60,0.58,0.86,38,2020,instrumental,lo-fi,minimal
+5,Gym Hero,Max Pulse,pop,intense,0.93,132,0.77,0.88,0.05,82,2020,sung,polished,constant
+6,Spacewalk Thoughts,Orbit Bloom,ambient,chill,0.28,60,0.65,0.41,0.92,35,2010,instrumental,polished,minimal
+7,Coffee Shop Stories,Slow Stereo,jazz,relaxed,0.37,90,0.71,0.54,0.89,48,2015,sung,standard,constant
+8,Night Drive Loop,Neon Echo,synthwave,moody,0.75,110,0.49,0.73,0.22,62,1980,instrumental,polished,evolves
+9,Focus Flow,LoRoom,lofi,focused,0.40,80,0.59,0.60,0.78,40,2020,instrumental,lo-fi,constant
+10,Rooftop Lights,Indigo Parade,indie pop,happy,0.76,124,0.81,0.82,0.35,58,2015,sung,standard,builds
+11,Electric Dreams,Pulse Collective,electronic,uplifting,0.87,128,0.92,0.91,0.08,75,2020,instrumental,polished,builds
+12,Bach Suite No.1,Classical Ensemble,classical,meditative,0.15,65,0.58,0.12,0.98,52,1700,instrumental,polished,constant
+13,Urban Beats,MC Cipher,hip-hop,energetic,0.89,98,0.68,0.84,0.15,76,2015,rapped,polished,constant
+14,Dusty Roads,The Wanderers,country,melancholic,0.52,95,0.42,0.56,0.72,45,2000,sung,standard,evolves
+15,Neon Thoughts,Indie Void,indie,nostalgic,0.61,105,0.64,0.68,0.43,51,2010,sung,standard,evolves
+16,Island Vibes,Reggae Kings,reggae,uplifting,0.68,92,0.85,0.71,0.68,64,2015,sung,standard,constant
+17,Soul Reflections,Nina Rivers,soul,nostalgic,0.48,88,0.71,0.62,0.76,55,2010,sung,polished,evolves
+18,Glitch Garden,Experimental Labs,experimental,intense,0.79,115,0.51,0.73,0.19,41,2015,instrumental,avant-garde,evolves
+19,Midnight Blues,The Rooters,blues,melancholic,0.55,85,0.48,0.59,0.81,46,2005,sung,standard,evolves
+20,Bass Drop,Synth Mech,dubstep,dark,0.92,140,0.35,0.78,0.06,68,2010,instrumental,polished,builds
+21,Retro Nights,Neon Pulse,synthwave,moody,0.72,105,0.45,0.70,0.15,65,1985,instrumental,polished,constant
+22,Cyber Highway,Synth Wave,synthwave,energetic,0.85,128,0.68,0.75,0.10,70,1990,instrumental,polished,builds
+23,Moonlight Sonata,Classical Ensemble,classical,melancholic,0.25,55,0.50,0.10,0.95,58,1800,instrumental,polished,evolves
+24,Symphony No. 5,Classical Ensemble,classical,intense,0.70,120,0.60,0.30,0.98,75,1850,instrumental,polished,builds
+25,Blue Note,Jazz Trio,jazz,melancholic,0.45,90,0.55,0.50,0.85,50,2015,sung,standard,constant
+26,Smooth Jazz Nights,Jazz Ensemble,jazz,relaxed,0.40,85,0.65,0.55,0.88,52,2010,instrumental,polished,constant
+27,Lonesome Highway,Country Star,country,melancholic,0.50,95,0.40,0.45,0.80,48,2005,sung,standard,evolves
+28,Country Roads,Country Band,country,nostalgic,0.55,100,0.60,0.50,0.75,51,2000,sung,standard,constant
+29,Deep Blues,Blues Master,blues,melancholic,0.50,80,0.45,0.55,0.82,47,2008,sung,standard,evolves
+30,Ethereal Spaces,Ambient Artist,ambient,meditative,0.20,55,0.60,0.20,0.90,38,2018,instrumental,polished,minimal

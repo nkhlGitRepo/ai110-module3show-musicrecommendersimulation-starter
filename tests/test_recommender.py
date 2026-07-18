@@ -1,5 +1,5 @@
 import pytest
-from src.recommender import Song, UserProfile, load_songs, score_song, recommend_songs
+from src.recommender import Song, UserProfile, load_songs, score_song, score_song_advanced, recommend_songs
 
 
 # Test fixtures: small dataset for testing
@@ -17,6 +17,11 @@ def sample_songs():
             'valence': 0.90,
             'danceability': 0.80,
             'acousticness': 0.15,
+            'popularity': 78,
+            'release_decade': 2020,
+            'vocal_style': "sung",
+            'production_quality': "polished",
+            'emotional_arc': "constant",
         },
         {
             'id': 2,
@@ -29,6 +34,11 @@ def sample_songs():
             'valence': 0.60,
             'danceability': 0.50,
             'acousticness': 0.85,
+            'popularity': 42,
+            'release_decade': 2020,
+            'vocal_style': "instrumental",
+            'production_quality': "lo-fi",
+            'emotional_arc': "constant",
         },
         {
             'id': 3,
@@ -41,6 +51,11 @@ def sample_songs():
             'valence': 0.45,
             'danceability': 0.60,
             'acousticness': 0.10,
+            'popularity': 65,
+            'release_decade': 2010,
+            'vocal_style': "sung",
+            'production_quality': "polished",
+            'emotional_arc': "builds",
         },
     ]
 
@@ -275,6 +290,154 @@ class TestLoadSongs:
 
 
 # Integration tests
+class TestAdvancedFeatures:
+    """Test scoring with advanced attributes."""
+
+    def test_vocal_style_similarity_exact_match(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'preferred_vocal_style': 'sung',
+        }
+
+        pop_song = sample_songs[0]  # sung vocal style
+        lofi_song = sample_songs[1]  # instrumental
+
+        score_pop, reasons_pop = score_song_advanced(user_prefs, pop_song)
+        score_lofi, reasons_lofi = score_song_advanced(user_prefs, lofi_song)
+
+        assert score_pop > score_lofi, "Matching vocal style should score higher"
+        assert any("1.00" in r for r in reasons_pop if "Vocal" in r), "Exact match should be 1.00"
+        assert any("0.10" in r for r in reasons_lofi if "Vocal" in r), "Mismatch should be gradual (0.10)"
+
+    def test_vocal_style_partial_similarity(self):
+        from src.recommender import vocal_style_similarity
+        assert vocal_style_similarity('sung', 'sung') == 1.0
+        assert vocal_style_similarity('sung', 'rapped') == 0.6
+        assert vocal_style_similarity('sung', 'spoken') == 0.5
+        assert vocal_style_similarity('sung', 'instrumental') == 0.1
+
+    def test_production_quality_similarity(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'lofi',
+            'favorite_mood': 'chill',
+            'target_energy': 0.35,
+            'likes_acoustic': True,
+            'preferred_production': 'lo-fi',
+        }
+
+        lofi_song = sample_songs[1]  # lo-fi production
+        pop_song = sample_songs[0]  # polished production
+
+        score_lofi, _ = score_song_advanced(user_prefs, lofi_song)
+        score_pop, _ = score_song_advanced(user_prefs, pop_song)
+
+        assert score_lofi > score_pop, "Matching production quality should score higher"
+
+    def test_production_quality_gradual_scoring(self):
+        from src.recommender import production_quality_similarity
+        assert production_quality_similarity('polished', 'polished') == 1.0
+        assert production_quality_similarity('polished', 'standard') > 0.6
+        assert production_quality_similarity('polished', 'lo-fi') > 0.1
+
+    def test_emotional_arc_similarity(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'rock',
+            'favorite_mood': 'intense',
+            'target_energy': 0.92,
+            'likes_acoustic': False,
+            'preferred_emotional_arc': 'builds',
+        }
+
+        rock_song = sample_songs[2]  # emotional arc: builds
+        pop_song = sample_songs[0]  # emotional arc: constant
+
+        score_rock, _ = score_song_advanced(user_prefs, rock_song)
+        score_pop, _ = score_song_advanced(user_prefs, pop_song)
+
+        assert score_rock > score_pop, "Matching emotional arc should score higher"
+
+    def test_emotional_arc_gradual_scoring(self):
+        from src.recommender import emotional_arc_similarity
+        assert emotional_arc_similarity('constant', 'constant') == 1.0
+        assert emotional_arc_similarity('constant', 'minimal') == 0.7
+        assert emotional_arc_similarity('builds', 'evolves') == 0.6
+        assert emotional_arc_similarity('constant', 'builds') == 0.2
+
+    def test_popularity_preference_popular(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'prefer_popular': True,
+        }
+
+        pop_song = sample_songs[0]  # popularity: 78
+        lofi_song = sample_songs[1]  # popularity: 42
+
+        score_pop, _ = score_song_advanced(user_prefs, pop_song)
+        score_lofi, _ = score_song_advanced(user_prefs, lofi_song)
+
+        assert score_pop > score_lofi, "Popular songs should score higher for popularity-seekers"
+
+    def test_popularity_preference_indie(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'lofi',
+            'favorite_mood': 'chill',
+            'target_energy': 0.35,
+            'likes_acoustic': True,
+            'prefer_popular': False,
+        }
+
+        lofi_song = sample_songs[1]  # popularity: 42
+        pop_song = sample_songs[0]  # popularity: 78
+
+        score_lofi, _ = score_song_advanced(user_prefs, lofi_song)
+        score_pop, _ = score_song_advanced(user_prefs, pop_song)
+
+        assert score_lofi > score_pop, "Less popular songs should score higher for indie-seekers"
+
+    def test_release_decade_distance(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'target_release_decade': 2020,
+        }
+
+        pop_song = sample_songs[0]  # 2020
+        rock_song = sample_songs[2]  # 2010
+
+        score_pop, _ = score_song_advanced(user_prefs, pop_song)
+        score_rock, _ = score_song_advanced(user_prefs, rock_song)
+
+        assert score_pop > score_rock, "Songs closer to target decade should score higher"
+
+    def test_advanced_scoring_includes_base_score(self, sample_songs):
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'preferred_vocal_style': 'sung',
+            'preferred_production': 'polished',
+            'preferred_emotional_arc': 'constant',
+            'prefer_popular': True,
+            'target_release_decade': 2020,
+        }
+
+        song = sample_songs[0]
+
+        base_score, _ = score_song(user_prefs, song)
+        advanced_score, _ = score_song_advanced(user_prefs, song)
+
+        assert advanced_score > base_score, "Advanced scoring should add to base score"
+
+
 class TestIntegration:
     """End-to-end tests combining multiple functions."""
 
@@ -291,6 +454,25 @@ class TestIntegration:
 
         assert len(recommendations) == 5
         # Check that scores are in descending order
+        scores = [score for _, score, _ in recommendations]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_advanced_scoring_with_real_data(self):
+        songs = load_songs("data/songs.csv")
+        user_prefs = {
+            'favorite_genre': 'pop',
+            'favorite_mood': 'happy',
+            'target_energy': 0.85,
+            'likes_acoustic': False,
+            'preferred_vocal_style': 'sung',
+            'preferred_production': 'polished',
+            'prefer_popular': True,
+            'target_release_decade': 2020,
+        }
+
+        recommendations = recommend_songs(user_prefs, songs, k=5, use_advanced=True)
+
+        assert len(recommendations) == 5
         scores = [score for _, score, _ in recommendations]
         assert scores == sorted(scores, reverse=True)
 
